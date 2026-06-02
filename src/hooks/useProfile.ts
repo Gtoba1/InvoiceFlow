@@ -1,18 +1,108 @@
 'use client';
 
-import { useLocalStorage } from './useLocalStorage';
+/**
+ * useProfile hook — manages the authenticated user's freelancer profile.
+ * Fetches from /api/profile on mount and persists changes back to Supabase.
+ * Falls back to the DEFAULT_PROFILE shape while loading.
+ */
+import { useState, useEffect, useCallback } from 'react';
 import { FreelancerProfile, DEFAULT_PROFILE } from '@/types';
-import { STORAGE_KEYS } from '@/lib/storage';
+
+/** Convert snake_case DB column names to our camelCase FreelancerProfile shape. */
+function dbToProfile(row: Record<string, unknown>): FreelancerProfile {
+  return {
+    fullName:      (row.full_name      as string) ?? '',
+    businessName:  (row.business_name  as string) ?? '',
+    email:         (row.email          as string) ?? '',
+    phone:         (row.phone          as string) ?? '',
+    address:       (row.address        as string) ?? '',
+    website:       (row.website        as string) ?? '',
+    bankName:      (row.bank_name      as string) ?? '',
+    accountNumber: (row.account_number as string) ?? '',
+    accountName:   (row.account_name   as string) ?? '',
+    logo:          (row.logo           as string) ?? '',
+    signature:     (row.signature      as string) ?? '',
+    accentColor:   (row.accent_color   as string) ?? '#3b82f6',
+  };
+}
+
+/** Convert camelCase FreelancerProfile back to snake_case for the API. */
+function profileToDb(profile: FreelancerProfile): Record<string, string> {
+  return {
+    full_name:      profile.fullName,
+    business_name:  profile.businessName,
+    email:          profile.email,
+    phone:          profile.phone,
+    address:        profile.address,
+    website:        profile.website,
+    bank_name:      profile.bankName,
+    account_number: profile.accountNumber,
+    account_name:   profile.accountName,
+    logo:           profile.logo,
+    signature:      profile.signature,
+    accent_color:   profile.accentColor,
+  };
+}
 
 export function useProfile() {
-  const [profile, setProfile] = useLocalStorage<FreelancerProfile>(
-    STORAGE_KEYS.PROFILE,
-    DEFAULT_PROFILE
-  );
+  const [profile, setProfileState] = useState<FreelancerProfile>(DEFAULT_PROFILE);
+  const [isLoading, setIsLoading] = useState(true);
+  // true when the user has never saved a profile (triggers the setup dialog)
+  const [needsSetup, setNeedsSetup] = useState(false);
 
-  const updateProfile = (updates: Partial<FreelancerProfile>) => {
-    setProfile((prev) => ({ ...prev, ...updates }));
-  };
+  useEffect(() => {
+    fetch('/api/profile')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && data.full_name) {
+          // Existing profile found
+          setProfileState(dbToProfile(data));
+          setNeedsSetup(false);
+        } else {
+          // No profile yet — pre-fill email from the DB row if available
+          if (data?.email) {
+            setProfileState((p) => ({ ...p, email: data.email }));
+          }
+          setNeedsSetup(true);
+        }
+      })
+      .catch(() => setNeedsSetup(true))
+      .finally(() => setIsLoading(false));
+  }, []);
 
-  return { profile, setProfile, updateProfile };
+  /** Persist a full profile object (used by ProfileSetupDialog and ProfileDialog). */
+  const setProfile = useCallback(async (next: FreelancerProfile) => {
+    setProfileState(next);
+    setNeedsSetup(false);
+    await fetch('/api/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(profileToDb(next)),
+    });
+  }, []);
+
+  /** Merge partial updates — useful for individual field edits. */
+  const updateProfile = useCallback(async (updates: Partial<FreelancerProfile>) => {
+    const next = { ...profile, ...updates };
+    setProfileState(next);
+    await fetch('/api/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(profileToDb(next)),
+    });
+  }, [profile]);
+
+  /** Called from ProfileSetupDialog — accepts raw snake_case keys from the form. */
+  const saveInitialProfile = useCallback(async (raw: Record<string, string>) => {
+    const res = await fetch('/api/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(raw),
+    });
+    const data = await res.json();
+    setProfileState(dbToProfile(data));
+    setNeedsSetup(false);
+  }, []);
+
+  return { profile, isLoading, needsSetup, setProfile, updateProfile, saveInitialProfile };
 }

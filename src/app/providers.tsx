@@ -1,16 +1,12 @@
 'use client';
 
-import { ThemeProvider } from 'next-themes';
+/**
+ * Providers — wraps the app with the global AppContext (invoice state,
+ * profile, clients, services). Kept separate from layout.tsx so it can be
+ * a Client Component while layout.tsx stays a Server Component.
+ */
 import { AppProvider } from '@/contexts/AppContext';
-import { Toaster } from '@/components/ui/sonner';
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  return (
-    <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
-      <AppProvider>
-        {children}
-        <Toaster position="bottom-right" richColors />
-      </AppProvider>
-    </ThemeProvider>
-  );
+  return <AppProvider>{children}</AppProvider>;
 }

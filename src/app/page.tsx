@@ -1,38 +1,66 @@
 'use client';
 
+/**
+ * Main application page — the invoice editor.
+ * On first login, shows the ProfileSetupDialog before the editor.
+ * Desktop: side-by-side editor + preview panels.
+ * Mobile: tabbed editor / preview.
+ */
 import { useState } from 'react';
 import { Header } from '@/components/layout/Header';
 import { InvoiceEditor } from '@/components/invoice/InvoiceEditor';
 import { InvoicePreview } from '@/components/preview/InvoicePreview';
+import { ProfileSetupDialog } from '@/components/dialogs/ProfileSetupDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Providers } from './providers';
+import { useProfile } from '@/hooks/useProfile';
 import { PenLine, Eye } from 'lucide-react';
 
-export default function HomePage() {
+/** Inner component — needs to be inside Providers to access AppContext. */
+function AppShell() {
+  const { needsSetup, isLoading, saveInitialProfile, profile } = useProfile();
   const [mobileTab, setMobileTab] = useState('editor');
+
+  // Don't render the editor until we know whether the setup dialog is needed.
+  // This prevents a flash of the editor before the modal appears.
+  if (isLoading) {
+    return (
+      <div className="h-screen flex items-center justify-center text-muted-foreground text-sm">
+        Loading…
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background">
       <Header />
 
-      {/* Desktop layout: two-panel */}
+      {/* First-login profile setup — modal blocks editor until saved */}
+      <ProfileSetupDialog
+        open={needsSetup}
+        userEmail={profile.email}
+        onSave={saveInitialProfile}
+      />
+
+      {/* ── Desktop layout: two-panel ──────────────────────── */}
       <div className="hidden md:flex flex-1 overflow-hidden">
-        {/* Left: Editor */}
+        {/* Left panel — scrollable invoice form */}
         <div className="w-[420px] lg:w-[460px] xl:w-[520px] flex-shrink-0 border-r flex flex-col overflow-hidden">
           <ScrollArea className="flex-1">
             <InvoiceEditor />
           </ScrollArea>
         </div>
-        {/* Right: Preview */}
+        {/* Right panel — live invoice preview */}
         <div className="flex-1 overflow-hidden flex flex-col">
           <InvoicePreview />
         </div>
       </div>
 
-      {/* Mobile layout: tabbed */}
+      {/* ── Mobile layout: tabbed ──────────────────────────── */}
       <div className="flex md:hidden flex-1 overflow-hidden flex-col">
         <Tabs value={mobileTab} onValueChange={setMobileTab} className="flex flex-col flex-1 overflow-hidden">
-          <div className="border-b px-4 py-2 bg-muted/30">
+          <div className="border-b px-4 py-2 bg-muted/30 flex-shrink-0">
             <TabsList className="w-full">
               <TabsTrigger value="editor" className="flex-1 gap-1.5 text-xs">
                 <PenLine className="w-3.5 h-3.5" /> Editor
@@ -53,5 +81,13 @@ export default function HomePage() {
         </Tabs>
       </div>
     </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Providers>
+      <AppShell />
+    </Providers>
   );
 }

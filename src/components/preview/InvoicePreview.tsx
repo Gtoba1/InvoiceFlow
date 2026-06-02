@@ -112,9 +112,21 @@ export function InvoicePreview() {
         </div>
       </div>
 
-      {/* Preview Area */}
-      <div className="flex-1 overflow-auto bg-gray-200 dark:bg-gray-800 p-6">
-        <div className="mx-auto" style={{ width: '794px' }}>
+      {/* Preview Area — scrollable, A4 width, scales down on mobile */}
+      <div className="flex-1 overflow-auto bg-gray-200 dark:bg-gray-800 p-3 sm:p-6 invoice-preview-container">
+        <div
+          className="mx-auto origin-top invoice-preview-scale"
+          style={{
+            width: '794px',
+            /* Scale to fit viewport width on mobile while preserving A4 proportions */
+            transform: typeof window !== 'undefined' && window.innerWidth < 768
+              ? `scale(${(window.innerWidth - 24) / 794})`
+              : undefined,
+            marginBottom: typeof window !== 'undefined' && window.innerWidth < 768
+              ? `-${794 - (window.innerWidth - 24)}px`
+              : undefined,
+          }}
+        >
           <div
             id={PREVIEW_ELEMENT_ID}
             className="invoice-preview shadow-2xl overflow-hidden"
