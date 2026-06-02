@@ -11,8 +11,11 @@ import { NotesSection } from './NotesSection';
 import { ClientDialog } from '@/components/dialogs/ClientDialog';
 import { Currency } from '@/types';
 import { COUNTRIES, getDialCode } from '@/lib/countries';
-import { Users, FileText, Receipt, StickyNote, ChevronDown, ChevronUp } from 'lucide-react';
+import { formatCurrency } from '@/lib/formatters';
+import { Users, FileText, Receipt, StickyNote, ChevronDown, ChevronUp, CheckCircle, Loader2, History } from 'lucide-react';
 import { useState } from 'react';
+import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
 
 const CURRENCIES: { value: Currency; label: string }[] = [
   { value: 'NGN', label: 'NGN — Nigerian Naira (₦)' },
@@ -51,8 +54,37 @@ function Section({ title, icon, children, defaultOpen = true }: SectionProps) {
 }
 
 export function InvoiceEditor() {
-  const { invoice, updateField, updateClientInfo } = useApp();
+  const { invoice, updateField, updateClientInfo, finalizeInvoice } = useApp();
   const [clientDialogOpen, setClientDialogOpen] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
+  const [savedId, setSavedId] = useState<string | null>(null); // tracks if already saved this session
+  const router = useRouter();
+
+  const handleFinalize = async () => {
+    if (invoice.items.length === 0) {
+      toast.error('Add at least one line item before saving.');
+      return;
+    }
+    if (!invoice.client.name) {
+      toast.error('Please add a client name before saving.');
+      return;
+    }
+    setFinalizing(true);
+    try {
+      const id = await finalizeInvoice();
+      setSavedId(id);
+      toast.success(`${invoice.invoiceNumber} saved to history!`, {
+        action: {
+          label: 'View History',
+          onClick: () => router.push('/invoices'),
+        },
+      });
+    } catch {
+      toast.error('Failed to save. Please try again.');
+    } finally {
+      setFinalizing(false);
+    }
+  };
 
   const handleCountryChange = (countryCode: string) => {
     const country = COUNTRIES.find((c) => c.code === countryCode);
@@ -230,6 +262,57 @@ export function InvoiceEditor() {
       <Section title="Notes & Terms" icon={<StickyNote className="w-4 h-4 text-primary" />}>
         <NotesSection />
       </Section>
+
+      {/* ── Finalize button ─────────────────────────────── */}
+      <div className="border rounded-xl overflow-hidden">
+        {savedId ? (
+          /* Already saved this session — show update option */
+          <div className="p-4 space-y-3">
+            <div className="flex items-center gap-2 text-sm text-emerald-600 font-medium">
+              <CheckCircle className="w-4 h-4" />
+              Saved — {invoice.invoiceNumber}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 gap-1.5 text-xs"
+                onClick={handleFinalize}
+                disabled={finalizing}
+              >
+                {finalizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                Update in History
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 gap-1.5 text-xs"
+                onClick={() => router.push('/invoices')}
+              >
+                <History className="w-3.5 h-3.5" />
+                View History
+              </Button>
+            </div>
+          </div>
+        ) : (
+          /* Not yet saved — show the main CTA */
+          <button
+            onClick={handleFinalize}
+            disabled={finalizing}
+            className="w-full flex items-center justify-between px-5 py-4 bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-60"
+          >
+            <div className="flex items-center gap-2 font-semibold text-sm">
+              {finalizing
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <CheckCircle className="w-4 h-4" />}
+              {finalizing ? 'Saving…' : 'Save to Invoice History'}
+            </div>
+            <div className="font-bold text-base">
+              {formatCurrency(invoice.total, invoice.currency)}
+            </div>
+          </button>
+        )}
+      </div>
 
       <div className="h-4" />
 

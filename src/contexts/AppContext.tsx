@@ -54,6 +54,7 @@ interface AppContextType {
   setTemplate: (template: InvoiceTemplate) => void;
   resetInvoice: () => void;
   saveInvoice: () => void;
+  finalizeInvoice: () => Promise<string>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -78,7 +79,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addItem, updateItem, removeItem, duplicateItem,
     setServiceForItem: rawSetServiceForItem,
     updateDiscount, setTemplate,
-    resetInvoice, saveInvoice,
+    resetInvoice, saveInvoice, finalizeInvoice,
   } = useInvoice(profile);
 
   /**
@@ -115,7 +116,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateField, updateClientInfo, setClientFromSaved,
       addItem, updateItem, removeItem, duplicateItem,
       setServiceForItem, updateDiscount, setTemplate,
-      resetInvoice, saveInvoice,
+      resetInvoice, saveInvoice, finalizeInvoice,
     }}>
       {children}
     </AppContext.Provider>

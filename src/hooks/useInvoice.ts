@@ -175,16 +175,77 @@ export function useInvoice(profile: FreelancerProfile | null) {
     setInvoice(createDefaultInvoice(newSettings, profile));
   }, [profile]);
 
+  // Tracks the Supabase ID of the invoice after it has been finalized at least once.
+  // Null means it hasn't been saved to the API yet (still a local draft).
+  const [apiInvoiceId, setApiInvoiceId] = useState<string | null>(null);
+
   const saveInvoice = useCallback(() => {
-    const saved = storageGet<Invoice[]>(STORAGE_KEYS.INVOICES, []);
-    const existing = saved.findIndex((inv) => inv.id === invoice.id);
-    if (existing >= 0) saved[existing] = invoice;
-    else saved.push(invoice);
-    storageSet(STORAGE_KEYS.INVOICES, saved);
-    const newSettings = { ...settings, nextInvoiceNumber: settings.nextInvoiceNumber + 1 };
-    storageSet(STORAGE_KEYS.SETTINGS, newSettings);
-    setSettings(newSettings);
-  }, [invoice, settings]);
+    // Keep the localStorage draft in sync (used for auto-restore on page load)
+    storageSet(STORAGE_KEYS.CURRENT_INVOICE, invoice);
+  }, [invoice]);
+
+  /**
+   * finalizeInvoice — sends the invoice to Supabase and records it in history.
+   * - First call: POST (creates a new history record)
+   * - Subsequent calls: PUT (updates the existing record)
+   * Returns the saved invoice's Supabase ID.
+   */
+  const finalizeInvoice = useCallback(async (): Promise<string> => {
+    const payload = {
+      invoice_number: invoice.invoiceNumber,
+      invoice_date:   invoice.invoiceDate,
+      due_date:       invoice.dueDate,
+      currency:       invoice.currency,
+      client_snapshot: {
+        name:        invoice.client.name,
+        company:     invoice.client.company,
+        email:       invoice.client.email,
+        phone:       invoice.client.phone,
+        address:     invoice.client.address,
+        country:     invoice.client.country,
+        countryCode: invoice.client.countryCode,
+      },
+      tax_rate:             invoice.taxRate,
+      discount:             invoice.discount ?? null,
+      notes:                invoice.notes,
+      payment_instructions: invoice.paymentInstructions,
+      terms:                invoice.terms,
+      status:               invoice.status,
+      template:             invoice.template,
+      subtotal:             invoice.subtotal,
+      discount_amount:      invoice.discountAmount,
+      tax_amount:           invoice.taxAmount,
+      total:                invoice.total,
+      items: invoice.items.map((item, idx) => ({
+        service:     item.service,
+        description: item.description,
+        quantity:    item.quantity,
+        rate:        item.rate,
+        amount:      item.amount,
+        sort_order:  idx,
+      })),
+    };
+
+    if (apiInvoiceId) {
+      // Invoice was already finalized — update the existing Supabase record
+      await fetch(`/api/invoices/${apiInvoiceId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      return apiInvoiceId;
+    } else {
+      // First finalize — create a new record in Supabase
+      const res = await fetch('/api/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      setApiInvoiceId(data.id);
+      return data.id;
+    }
+  }, [invoice, apiInvoiceId]);
 
   return {
     invoice,
@@ -201,5 +262,6 @@ export function useInvoice(profile: FreelancerProfile | null) {
     setTemplate,
     resetInvoice,
     saveInvoice,
+    finalizeInvoice,
   };
 }
