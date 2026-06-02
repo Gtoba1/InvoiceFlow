@@ -15,6 +15,7 @@ import { useProfile } from '@/hooks/useProfile';
 import { useClients } from '@/hooks/useClients';
 import { useServices } from '@/hooks/useServices';
 import { useInvoice } from '@/hooks/useInvoice';
+import { useAccentColor } from '@/hooks/useAccentColor';
 import type {
   FreelancerProfile, Client, Service, Invoice,
   InvoiceItem, ClientInfo, InvoiceDiscount, InvoiceTemplate, AppSettings,
@@ -62,6 +63,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     profile, isLoading: isProfileLoading, needsSetup,
     updateProfile, setProfile, saveInitialProfile,
   } = useProfile();
+
+  // Apply the user's brand colour to the whole app UI as soon as it's loaded
+  useAccentColor(profile.accentColor);
 
   const { clients, addClient, updateClient, deleteClient } = useClients();
   const { services, addService, updateService, deleteService } = useServices();

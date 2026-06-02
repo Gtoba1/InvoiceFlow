@@ -48,27 +48,42 @@ function profileToDb(profile: FreelancerProfile): Record<string, string> {
 export function useProfile() {
   const [profile, setProfileState] = useState<FreelancerProfile>(DEFAULT_PROFILE);
   const [isLoading, setIsLoading] = useState(true);
-  // true when the user has never saved a profile (triggers the setup dialog)
+  // true when the user has never completed profile setup (shows the onboarding dialog)
   const [needsSetup, setNeedsSetup] = useState(false);
 
+  // Key stored in localStorage after the user completes the profile setup dialog.
+  // This prevents the dialog from re-appearing on refresh even if the API is slow or errors.
+  const SETUP_FLAG = 'invoiceflow_setup_done';
+
   useEffect(() => {
+    // Fast path: if the user has already completed setup (flag in localStorage), skip the dialog
+    const setupDone = typeof window !== 'undefined' && localStorage.getItem(SETUP_FLAG) === 'true';
+
     fetch('/api/profile')
       .then((r) => r.json())
       .then((data) => {
-        // full_name must be a non-empty string — '' is falsy and would retrigger the dialog
-        if (data && typeof data.full_name === 'string' && data.full_name.trim().length > 0) {
+        const hasName = data && typeof data.full_name === 'string' && data.full_name.trim().length > 0;
+        if (hasName) {
+          // Profile exists in DB — load it and mark setup done locally
           setProfileState(dbToProfile(data));
           setNeedsSetup(false);
+          if (typeof window !== 'undefined') localStorage.setItem(SETUP_FLAG, 'true');
+        } else if (setupDone) {
+          // localStorage says done even though DB row might be empty — trust the flag
+          if (data?.email) setProfileState((p) => ({ ...p, email: data.email as string }));
+          setNeedsSetup(false);
         } else {
-          // No complete profile yet — pre-fill email if available
-          if (data?.email) {
-            setProfileState((p) => ({ ...p, email: data.email as string }));
-          }
+          // Genuinely first time — show the setup dialog
+          if (data?.email) setProfileState((p) => ({ ...p, email: data.email as string }));
           setNeedsSetup(true);
         }
       })
-      .catch(() => setNeedsSetup(true))
+      .catch(() => {
+        // If API fails, trust localStorage flag to avoid blocking the user
+        setNeedsSetup(!setupDone);
+      })
       .finally(() => setIsLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /** Persist a full profile object (used by ProfileSetupDialog and ProfileDialog). */
@@ -103,6 +118,8 @@ export function useProfile() {
     const data = await res.json();
     setProfileState(dbToProfile(data));
     setNeedsSetup(false);
+    // Persist the flag so the dialog never re-appears on refresh
+    if (typeof window !== 'undefined') localStorage.setItem('invoiceflow_setup_done', 'true');
   }, []);
 
   return { profile, isLoading, needsSetup, setProfile, updateProfile, saveInitialProfile };

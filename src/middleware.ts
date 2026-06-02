@@ -62,6 +62,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Authenticated user on the landing page → send to the editor
+  if (user && path === '/') {
+    const url = request.nextUrl.clone();
+    url.pathname = '/app';
+    return NextResponse.redirect(url);
+  }
+
   // Admin-only guard for /admin routes
   if (user && path.startsWith('/admin')) {
     const { data: profile } = await supabase

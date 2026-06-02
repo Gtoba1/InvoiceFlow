@@ -1,9 +1,9 @@
 'use client';
 
 /**
- * App header — shown on /app and /invoices pages.
- * User menu only shows Admin Portal link for users with is_admin = true.
- * Regular users never see admin options.
+ * App header — shown on /app and /invoices.
+ * Avatar shows first+last initials or the user's logo picture.
+ * Admin Portal link only visible to users with is_admin = true.
  */
 import { useState } from 'react';
 import { useApp } from '@/contexts/AppContext';
@@ -17,9 +17,20 @@ import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  User, Briefcase, Plus, Moon, Sun, Save,
-  Zap, LogOut, Shield, ChevronDown, History,
+  Briefcase, Plus, Moon, Sun, Save,
+  Zap, LogOut, Shield, ChevronDown, History, User,
 } from 'lucide-react';
+
+/** Returns up to 2 initials from the user's full name, e.g. "Gabriel Toba" → "GT" */
+function getInitials(fullName: string, email: string): string {
+  const name = fullName.trim();
+  if (name) {
+    const parts = name.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return parts[0][0].toUpperCase();
+  }
+  return (email?.[0] ?? 'U').toUpperCase();
+}
 
 export function Header() {
   const { resetInvoice, saveInvoice, invoice, profile } = useApp();
@@ -29,10 +40,7 @@ export function Header() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const router = useRouter();
 
-  const handleSave = () => {
-    saveInvoice();
-    toast.success('Invoice saved!');
-  };
+  const handleSave = () => { saveInvoice(); toast.success('Invoice saved!'); };
 
   const handleNew = () => {
     if (invoice.items.length > 0 || invoice.client.name) {
@@ -46,18 +54,19 @@ export function Header() {
   const handleSignOut = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
+    // Clear the setup-done flag so new user on same device sees onboarding
+    localStorage.removeItem('invoiceflow_setup_done');
     router.push('/sign-in');
     router.refresh();
   };
 
-  // First letter of name or email for the avatar badge
-  const avatarLetter = (profile.fullName || profile.email || 'U')[0].toUpperCase();
+  const initials = getInitials(profile.fullName, profile.email);
 
   return (
     <TooltipProvider>
       <header className="flex items-center justify-between px-3 sm:px-4 py-2.5 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
 
-        {/* Brand + invoice number */}
+        {/* Brand */}
         <div className="flex items-center gap-2">
           <div className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-primary text-primary-foreground flex-shrink-0">
             <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -67,15 +76,12 @@ export function Header() {
             <span className="font-bold text-sm text-primary">Flow</span>
           </Link>
           <div className="h-4 w-px bg-border mx-1 hidden sm:block" />
-          <span className="text-xs text-muted-foreground font-mono hidden sm:inline">
-            {invoice.invoiceNumber}
-          </span>
+          <span className="text-xs text-muted-foreground font-mono hidden sm:inline">{invoice.invoiceNumber}</span>
         </div>
 
         {/* Actions */}
         <div className="flex items-center gap-1">
 
-          {/* Invoice history */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="sm" onClick={() => router.push('/invoices')} className="gap-1.5 h-8 px-2 sm:px-3">
@@ -84,16 +90,6 @@ export function Header() {
               </Button>
             </TooltipTrigger>
             <TooltipContent>Invoice history</TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" onClick={() => setProfileOpen(true)} className="gap-1.5 h-8 px-2 sm:px-3">
-                <User className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline text-xs">Profile</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Edit profile &amp; branding</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -133,15 +129,24 @@ export function Header() {
             <span className="hidden sm:inline text-xs">New Invoice</span>
           </Button>
 
-          {/* User menu */}
+          {/* ── User avatar + dropdown ── */}
           <div className="relative ml-1">
             <button
               onClick={() => setUserMenuOpen((o) => !o)}
-              className="flex items-center gap-1.5 h-8 px-2 rounded-md hover:bg-muted transition-colors"
+              className="flex items-center gap-1 h-8 px-1 rounded-md hover:bg-muted transition-colors"
             >
-              <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold flex-shrink-0">
-                {avatarLetter}
-              </div>
+              {/* Avatar: profile logo or initials badge */}
+              {profile.logo ? (
+                <img
+                  src={profile.logo}
+                  alt="avatar"
+                  className="w-7 h-7 rounded-full object-cover border"
+                />
+              ) : (
+                <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold tracking-wide">
+                  {initials}
+                </div>
+              )}
               <ChevronDown className="w-3 h-3 text-muted-foreground hidden sm:block" />
             </button>
 
@@ -155,30 +160,24 @@ export function Header() {
                     <div className="text-xs text-muted-foreground truncate">{profile.email}</div>
                   </div>
 
-                  {/* My Account → opens profile dialog */}
-                  <button
-                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted transition-colors text-left"
-                    onClick={() => { setUserMenuOpen(false); setProfileOpen(true); }}
-                  >
+                  {/* My Account */}
+                  <button className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted transition-colors text-left"
+                    onClick={() => { setUserMenuOpen(false); setProfileOpen(true); }}>
                     <User className="w-4 h-4 text-muted-foreground" />
                     My Account
                   </button>
 
                   {/* Invoice history */}
-                  <button
-                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted transition-colors text-left"
-                    onClick={() => { setUserMenuOpen(false); router.push('/invoices'); }}
-                  >
+                  <button className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted transition-colors text-left"
+                    onClick={() => { setUserMenuOpen(false); router.push('/invoices'); }}>
                     <History className="w-4 h-4 text-muted-foreground" />
                     Invoice History
                   </button>
 
-                  {/* Admin Portal — only visible to admins */}
+                  {/* Admin Portal — admins only */}
                   {profile.isAdmin && (
-                    <button
-                      className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted transition-colors text-left"
-                      onClick={() => { setUserMenuOpen(false); router.push('/admin'); }}
-                    >
+                    <button className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted transition-colors text-left"
+                      onClick={() => { setUserMenuOpen(false); router.push('/admin'); }}>
                       <Shield className="w-4 h-4 text-amber-500" />
                       Admin Portal
                     </button>
@@ -186,10 +185,8 @@ export function Header() {
 
                   <div className="border-t my-1" />
 
-                  <button
-                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted transition-colors text-left text-destructive"
-                    onClick={handleSignOut}
-                  >
+                  <button className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted transition-colors text-left text-destructive"
+                    onClick={handleSignOut}>
                     <LogOut className="w-4 h-4" />
                     Sign Out
                   </button>

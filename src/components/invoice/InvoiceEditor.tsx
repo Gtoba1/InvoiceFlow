@@ -124,6 +124,18 @@ export function InvoiceEditor() {
             <Button variant="outline" size="sm" onClick={() => setClientDialogOpen(true)} className="shrink-0 gap-1.5">
               <Users className="w-3.5 h-3.5" /> Saved
             </Button>
+            {/* Clear all client fields */}
+            {invoice.client.name && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="shrink-0 text-muted-foreground hover:text-destructive text-xs h-9"
+                onClick={() => updateClientInfo({ name: '', company: '', email: '', phone: '', address: '', country: '', countryCode: '' })}
+                title="Clear client"
+              >
+                Clear
+              </Button>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
