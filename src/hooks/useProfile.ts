@@ -48,17 +48,12 @@ function profileToDb(profile: FreelancerProfile): Record<string, unknown> {
   };
 }
 
-const SETUP_FLAG = 'invoiceflow_setup_done';
 
 export function useProfile() {
   const [profile, setProfileState] = useState<FreelancerProfile>(DEFAULT_PROFILE);
   const [isLoading, setIsLoading] = useState(true);
-  const [needsSetup, setNeedsSetup] = useState(false);
 
   useEffect(() => {
-    const setupDone =
-      typeof window !== 'undefined' && localStorage.getItem(SETUP_FLAG) === 'true';
-
     (async () => {
       try {
         const supabase = createClient();
@@ -71,19 +66,8 @@ export function useProfile() {
           .eq('id', user.id)
           .single();
 
-        const hasName =
-          data && typeof data.full_name === 'string' && data.full_name.trim().length > 0;
-
-        if (hasName) {
+        if (data) {
           setProfileState(dbToProfile(data as Record<string, unknown>));
-          setNeedsSetup(false);
-          if (typeof window !== 'undefined') localStorage.setItem(SETUP_FLAG, 'true');
-        } else if (setupDone) {
-          if (data?.email) setProfileState((p) => ({ ...p, email: data.email as string }));
-          setNeedsSetup(false);
-        } else {
-          if (data?.email) setProfileState((p) => ({ ...p, email: data.email as string }));
-          setNeedsSetup(true);
         }
       } finally {
         setIsLoading(false);
@@ -94,7 +78,6 @@ export function useProfile() {
   /** Persist a full profile object to Supabase */
   const setProfile = useCallback(async (next: FreelancerProfile) => {
     setProfileState(next);
-    setNeedsSetup(false);
 
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -122,27 +105,5 @@ export function useProfile() {
     });
   }, []);
 
-  /**
-   * Called from ProfileSetupDialog.
-   * Accepts raw snake_case keys (full_name, accent_color, etc.) and saves them.
-   */
-  const saveInitialProfile = useCallback(async (raw: Record<string, string>) => {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
-
-    const { data, error } = await supabase
-      .from('profiles')
-      .upsert({ id: user.id, ...raw })
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    setProfileState(dbToProfile(data as Record<string, unknown>));
-    setNeedsSetup(false);
-    if (typeof window !== 'undefined') localStorage.setItem(SETUP_FLAG, 'true');
-  }, []);
-
-  return { profile, isLoading, needsSetup, setProfile, updateProfile, saveInitialProfile };
+  return { profile, isLoading, setProfile, updateProfile };
 }

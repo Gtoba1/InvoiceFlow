@@ -25,10 +25,8 @@ interface AppContextType {
   // ── Profile ───────────────────────────────────────────────
   profile: FreelancerProfile;
   isProfileLoading: boolean;
-  needsSetup: boolean;
   updateProfile: (updates: Partial<FreelancerProfile>) => Promise<void>;
   setProfile: (profile: FreelancerProfile) => Promise<void>;
-  saveInitialProfile: (raw: Record<string, string>) => Promise<void>;
   // ── Clients ───────────────────────────────────────────────
   clients: Client[];
   addClient: (data: Omit<Client, 'id' | 'createdAt'>) => Promise<Client>;
@@ -61,8 +59,8 @@ const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const {
-    profile, isLoading: isProfileLoading, needsSetup,
-    updateProfile, setProfile, saveInitialProfile,
+    profile, isLoading: isProfileLoading,
+    updateProfile, setProfile,
   } = useProfile();
 
   // Apply the user's brand colour to the whole app UI as soon as it's loaded
@@ -108,8 +106,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      profile, isProfileLoading, needsSetup,
-      updateProfile, setProfile, saveInitialProfile,
+      profile, isProfileLoading,
+      updateProfile, setProfile,
       clients, addClient, updateClient, deleteClient,
       services, addService, updateService, deleteService,
       invoice, settings,
