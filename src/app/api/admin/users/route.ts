@@ -1,48 +1,41 @@
 /**
- * API route: /api/admin/users  (admin only)
- * GET — list all users with their profile and invoice count.
- * Uses the service-role key to bypass RLS and access all profiles.
+ * GET  /api/admin/users — list all users with profile + invoice count.
+ * PATCH /api/admin/users — toggle is_admin for a user.
+ * Auth: JWT from Authorization header.
  */
-import { createClient as createServerClient } from '@/lib/supabase/server';
-import { createClient as createAdmin } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { createAdminClient, verifyToken } from '@/lib/supabase/admin';
 
-export async function GET() {
-  // First verify the caller is an authenticated admin
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+async function getAdminUser(request: Request) {
+  const token = request.headers.get('Authorization')?.replace('Bearer ', '');
+  if (!token) return null;
 
-  const { data: profile } = await supabase
+  const user = await verifyToken(token);
+  if (!user) return null;
+
+  const admin = createAdminClient();
+  const { data: profile } = await admin
     .from('profiles')
     .select('is_admin')
     .eq('id', user.id)
     .single();
 
-  if (!profile?.is_admin) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  return profile?.is_admin ? user : null;
+}
 
-  // Use the service-role client to bypass RLS and read all profiles
-  const adminClient = createAdmin(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
+export async function GET(request: Request) {
+  const caller = await getAdminUser(request);
+  if (!caller) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  // Get all profiles
-  const { data: profiles, error } = await adminClient
+  const admin = createAdminClient();
+
+  const { data: profiles } = await admin
     .from('profiles')
     .select('id, full_name, business_name, email, is_admin, created_at')
     .order('created_at', { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const { data: invoiceCounts } = await admin.from('invoices').select('user_id');
 
-  // Get invoice counts per user
-  const { data: invoiceCounts } = await adminClient
-    .from('invoices')
-    .select('user_id');
-
-  // Attach invoice count to each profile
   const countMap = (invoiceCounts ?? []).reduce<Record<string, number>>((acc, row) => {
     acc[row.user_id] = (acc[row.user_id] ?? 0) + 1;
     return acc;
@@ -56,27 +49,15 @@ export async function GET() {
   return NextResponse.json(users);
 }
 
-/** PATCH — toggle admin status for a user */
 export async function PATCH(request: Request) {
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const { data: profile } = await supabase.from('profiles').select('is_admin').eq('id', user.id).single();
-  if (!profile?.is_admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const caller = await getAdminUser(request);
+  if (!caller) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { userId, is_admin } = await request.json();
+  const admin = createAdminClient();
 
-  const adminClient = createAdmin(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
-
-  const { error } = await adminClient
-    .from('profiles')
-    .update({ is_admin })
-    .eq('id', userId);
-
+  const { error } = await admin.from('profiles').update({ is_admin }).eq('id', userId);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
   return NextResponse.json({ success: true });
 }
