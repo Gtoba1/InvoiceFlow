@@ -9,6 +9,7 @@ import { generateId } from '@/lib/utils';
 import { calculateTotals, calculateItemAmount } from '@/lib/calculations';
 import { STORAGE_KEYS, storageGet, storageSet } from '@/lib/storage';
 import { today, addDays } from '@/lib/formatters';
+import { createClient } from '@/lib/supabase/client';
 
 // Calculates totals synchronously — call inside every setInvoice that touches items/discount/taxRate
 function withTotals(inv: Invoice): Invoice {
@@ -226,24 +227,47 @@ export function useInvoice(profile: FreelancerProfile | null) {
       })),
     };
 
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { items, ...invoiceRow } = payload;
+
     if (apiInvoiceId) {
       // Invoice was already finalized — update the existing Supabase record
-      await fetch(`/api/invoices/${apiInvoiceId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      await supabase
+        .from('invoices')
+        .update({ ...invoiceRow, updated_at: new Date().toISOString() })
+        .eq('id', apiInvoiceId)
+        .eq('user_id', user.id);
+
+      // Replace line items: delete old, insert new
+      await supabase.from('invoice_items').delete().eq('invoice_id', apiInvoiceId);
+      if (items.length > 0) {
+        await supabase.from('invoice_items').insert(
+          items.map((item) => ({ ...item, invoice_id: apiInvoiceId, service_name: item.service })),
+        );
+      }
       return apiInvoiceId;
     } else {
-      // First finalize — create a new record in Supabase
-      const res = await fetch('/api/invoices', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      setApiInvoiceId(data.id);
-      return data.id;
+      // First finalize — insert invoice header
+      const { data: saved, error } = await supabase
+        .from('invoices')
+        .insert({ ...invoiceRow, user_id: user.id })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Insert line items
+      if (items.length > 0) {
+        await supabase.from('invoice_items').insert(
+          items.map((item) => ({ ...item, invoice_id: saved.id, service_name: item.service })),
+        );
+      }
+
+      setApiInvoiceId(saved.id);
+      return saved.id;
     }
   }, [invoice, apiInvoiceId]);
 

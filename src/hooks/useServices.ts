@@ -1,17 +1,15 @@
 'use client';
 
 /**
- * useServices hook — manages the user's service catalogue.
- * On first login the API returns an empty list, so we seed DEFAULT_SERVICES
- * into the database automatically so the user has something to start with.
- * Users can freely add, edit, or delete services at any time.
+ * useServices hook — manages the user's service catalogue via Supabase browser client.
+ * Seeds default services on first login if the user has none.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Service } from '@/types';
 import { generateId } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
 import { DEFAULT_SERVICES } from '@/lib/sample-data';
 
-/** Map snake_case DB row → our Service type. */
 function rowToService(row: Record<string, unknown>): Service {
   return {
     id:          row.id          as string,
@@ -25,70 +23,94 @@ function rowToService(row: Record<string, unknown>): Service {
 
 export function useServices() {
   const [services, setServices] = useState<Service[]>([]);
-  const [seeded, setSeeded] = useState(false);
+  const seeding = useRef(false); // prevent double-seeding in StrictMode
 
   useEffect(() => {
-    fetch('/api/services')
-      .then((r) => r.json())
-      .then(async (data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setServices(data.map(rowToService));
-        } else if (!seeded) {
-          // First login — seed the default services for this user
-          setSeeded(true);
-          await Promise.all(
-            DEFAULT_SERVICES.map((s) =>
-              fetch('/api/services', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  name: s.name, description: s.description, rate: s.rate, terms: s.terms,
-                }),
-              }),
-            ),
-          );
-          // Fetch again to get real IDs from the DB
-          const res = await fetch('/api/services');
-          const seededData = await res.json();
-          if (Array.isArray(seededData)) setServices(seededData.map(rowToService));
-        }
-      })
-      .catch(console.error);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    const supabase = createClient();
+
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return;
+
+      const { data } = await supabase
+        .from('services')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true });
+
+      if (Array.isArray(data) && data.length > 0) {
+        setServices(data.map((r) => rowToService(r as Record<string, unknown>)));
+        return;
+      }
+
+      // First login — seed default services
+      if (seeding.current) return;
+      seeding.current = true;
+
+      await Promise.all(
+        DEFAULT_SERVICES.map((s) =>
+          supabase.from('services').insert({
+            user_id:     user.id,
+            name:        s.name,
+            description: s.description,
+            rate:        s.rate,
+            terms:       s.terms,
+          }),
+        ),
+      );
+
+      const { data: seeded } = await supabase
+        .from('services')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true });
+
+      if (Array.isArray(seeded)) {
+        setServices(seeded.map((r) => rowToService(r as Record<string, unknown>)));
+      }
+    });
   }, []);
 
   const addService = useCallback(async (data: Omit<Service, 'id' | 'createdAt'>): Promise<Service> => {
-    // Optimistic placeholder
     const temp: Service = { ...data, id: generateId(), createdAt: new Date().toISOString() };
     setServices((prev) => [...prev, temp]);
 
-    const res = await fetch('/api/services', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: data.name, description: data.description, rate: data.rate, terms: data.terms,
-      }),
-    });
-    const saved = await res.json();
-    const service = rowToService(saved);
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return temp;
+
+    const { data: saved } = await supabase
+      .from('services')
+      .insert({ user_id: user.id, name: data.name, description: data.description, rate: data.rate, terms: data.terms })
+      .select()
+      .single();
+
+    const service = rowToService(saved as Record<string, unknown>);
     setServices((prev) => prev.map((s) => (s.id === temp.id ? service : s)));
     return service;
   }, []);
 
   const updateService = useCallback(async (id: string, data: Partial<Omit<Service, 'id' | 'createdAt'>>) => {
     setServices((prev) => prev.map((s) => (s.id === id ? { ...s, ...data } : s)));
-    await fetch(`/api/services/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: data.name, description: data.description, rate: data.rate, terms: data.terms,
-      }),
-    });
+
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase
+      .from('services')
+      .update({ name: data.name, description: data.description, rate: data.rate, terms: data.terms })
+      .eq('id', id)
+      .eq('user_id', user.id);
   }, []);
 
   const deleteService = useCallback(async (id: string) => {
     setServices((prev) => prev.filter((s) => s.id !== id));
-    await fetch(`/api/services/${id}`, { method: 'DELETE' });
+
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase.from('services').delete().eq('id', id).eq('user_id', user.id);
   }, []);
 
   return { services, addService, updateService, deleteService };

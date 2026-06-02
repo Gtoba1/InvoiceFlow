@@ -1,16 +1,14 @@
 'use client';
 
 /**
- * useClients hook — manages the user's saved client list.
- * All CRUD operations go through /api/clients and are persisted in Supabase.
- * Optimistic updates keep the UI snappy — the state updates immediately
- * while the API call runs in the background.
+ * useClients hook — manages the user's saved client list via Supabase browser client.
+ * Optimistic updates keep the UI snappy while the DB write happens in the background.
  */
 import { useState, useEffect, useCallback } from 'react';
 import { Client } from '@/types';
 import { generateId } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
 
-/** Map the snake_case DB row to our Client type. */
 function rowToClient(row: Record<string, unknown>): Client {
   return {
     id:          row.id          as string,
@@ -28,25 +26,35 @@ function rowToClient(row: Record<string, unknown>): Client {
 export function useClients() {
   const [clients, setClients] = useState<Client[]>([]);
 
-  // Fetch all clients on mount
   useEffect(() => {
-    fetch('/api/clients')
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) setClients(data.map(rowToClient));
-      })
-      .catch(console.error);
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase
+        .from('clients')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .then(({ data }) => {
+          if (Array.isArray(data)) {
+            setClients(data.map((r) => rowToClient(r as Record<string, unknown>)));
+          }
+        });
+    });
   }, []);
 
   const addClient = useCallback(async (data: Omit<Client, 'id' | 'createdAt'>): Promise<Client> => {
-    // Optimistic placeholder so the UI updates instantly
     const temp: Client = { ...data, id: generateId(), createdAt: new Date().toISOString() };
     setClients((prev) => [temp, ...prev]);
 
-    const res = await fetch('/api/clients', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return temp;
+
+    const { data: saved } = await supabase
+      .from('clients')
+      .insert({
+        user_id:      user.id,
         name:         data.name,
         company:      data.company,
         email:        data.email,
@@ -54,25 +62,25 @@ export function useClients() {
         address:      data.address,
         country:      data.country,
         country_code: data.countryCode,
-      }),
-    });
+      })
+      .select()
+      .single();
 
-    const saved = await res.json();
-    const client = rowToClient(saved);
-
-    // Replace the temp placeholder with the real DB record (which has the real UUID)
+    const client = rowToClient(saved as Record<string, unknown>);
     setClients((prev) => prev.map((c) => (c.id === temp.id ? client : c)));
     return client;
   }, []);
 
   const updateClient = useCallback(async (id: string, data: Partial<Omit<Client, 'id' | 'createdAt'>>) => {
-    // Optimistic update
     setClients((prev) => prev.map((c) => (c.id === id ? { ...c, ...data } : c)));
 
-    await fetch(`/api/clients/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase
+      .from('clients')
+      .update({
         name:         data.name,
         company:      data.company,
         email:        data.email,
@@ -80,13 +88,19 @@ export function useClients() {
         address:      data.address,
         country:      data.country,
         country_code: data.countryCode,
-      }),
-    });
+      })
+      .eq('id', id)
+      .eq('user_id', user.id);
   }, []);
 
   const deleteClient = useCallback(async (id: string) => {
     setClients((prev) => prev.filter((c) => c.id !== id));
-    await fetch(`/api/clients/${id}`, { method: 'DELETE' });
+
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase.from('clients').delete().eq('id', id).eq('user_id', user.id);
   }, []);
 
   return { clients, addClient, updateClient, deleteClient };
