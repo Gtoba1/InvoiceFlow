@@ -113,11 +113,18 @@ export function SignInForm() {
         </Button>
       </form>
 
+      {/* Forgot password */}
+      <div className="text-center mt-3">
+        <Link href="/forgot-password" className="text-sm text-muted-foreground hover:text-foreground hover:underline">
+          Forgot password?
+        </Link>
+      </div>
+
       {/* Sign-up link */}
-      <p className="text-center text-sm text-muted-foreground mt-6">
+      <p className="text-center text-sm text-muted-foreground mt-4">
         Don&apos;t have an account?{' '}
         <Link href="/sign-up" className="text-primary font-medium hover:underline">
-          Create one
+          Create account
         </Link>
       </p>
     </div>

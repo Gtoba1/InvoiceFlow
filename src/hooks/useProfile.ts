@@ -11,18 +11,19 @@ import { FreelancerProfile, DEFAULT_PROFILE } from '@/types';
 /** Convert snake_case DB column names to our camelCase FreelancerProfile shape. */
 function dbToProfile(row: Record<string, unknown>): FreelancerProfile {
   return {
-    fullName:      (row.full_name      as string) ?? '',
-    businessName:  (row.business_name  as string) ?? '',
-    email:         (row.email          as string) ?? '',
-    phone:         (row.phone          as string) ?? '',
-    address:       (row.address        as string) ?? '',
-    website:       (row.website        as string) ?? '',
-    bankName:      (row.bank_name      as string) ?? '',
-    accountNumber: (row.account_number as string) ?? '',
-    accountName:   (row.account_name   as string) ?? '',
-    logo:          (row.logo           as string) ?? '',
-    signature:     (row.signature      as string) ?? '',
-    accentColor:   (row.accent_color   as string) ?? '#3b82f6',
+    fullName:      (row.full_name      as string)  ?? '',
+    businessName:  (row.business_name  as string)  ?? '',
+    email:         (row.email          as string)  ?? '',
+    phone:         (row.phone          as string)  ?? '',
+    address:       (row.address        as string)  ?? '',
+    website:       (row.website        as string)  ?? '',
+    bankName:      (row.bank_name      as string)  ?? '',
+    accountNumber: (row.account_number as string)  ?? '',
+    accountName:   (row.account_name   as string)  ?? '',
+    logo:          (row.logo           as string)  ?? '',
+    signature:     (row.signature      as string)  ?? '',
+    accentColor:   (row.accent_color   as string)  ?? '#3b82f6',
+    isAdmin:       (row.is_admin       as boolean) ?? false,
   };
 }
 
@@ -54,14 +55,14 @@ export function useProfile() {
     fetch('/api/profile')
       .then((r) => r.json())
       .then((data) => {
-        if (data && data.full_name) {
-          // Existing profile found
+        // full_name must be a non-empty string — '' is falsy and would retrigger the dialog
+        if (data && typeof data.full_name === 'string' && data.full_name.trim().length > 0) {
           setProfileState(dbToProfile(data));
           setNeedsSetup(false);
         } else {
-          // No profile yet — pre-fill email from the DB row if available
+          // No complete profile yet — pre-fill email if available
           if (data?.email) {
-            setProfileState((p) => ({ ...p, email: data.email }));
+            setProfileState((p) => ({ ...p, email: data.email as string }));
           }
           setNeedsSetup(true);
         }

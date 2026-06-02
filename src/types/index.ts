@@ -91,6 +91,7 @@ export interface FreelancerProfile {
   logo: string;
   signature: string;
   accentColor: string;
+  isAdmin: boolean;
 }
 
 export interface AppSettings {
@@ -114,6 +115,7 @@ export const DEFAULT_PROFILE: FreelancerProfile = {
   logo: '',
   signature: '',
   accentColor: '#3b82f6',
+  isAdmin: false,
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
