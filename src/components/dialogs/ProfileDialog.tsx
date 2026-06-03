@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import { useApp } from '@/contexts/AppContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -34,10 +35,19 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
     }
   };
 
-  const handleSave = () => {
-    setProfile(form);
-    toast.success('Profile saved!');
-    onOpenChange(false);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await setProfile(form);
+      toast.success('Profile saved!');
+      onOpenChange(false);
+    } catch {
+      toast.error('Failed to save profile. Check your connection and try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -191,7 +201,9 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSave}>Save Profile</Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : 'Save Profile'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
