@@ -46,11 +46,6 @@ export function ModernTemplate({ invoice, profile }: TemplateProps) {
             </div>
           </div>
         </div>
-        <div className="mt-6">
-          <span className="inline-flex items-center px-3 py-1 rounded-full bg-white/20 text-white text-xs font-medium uppercase tracking-wider">
-            {invoice.status}
-          </span>
-        </div>
       </div>
 
       {/* Main content */}
